@@ -8,6 +8,8 @@ BAUD = 115200
 QUERY = "ifconfig\n"
 IP_START = "192.168."
 INTERFACE = "wlan0"
+USER = "root"
+PASS = "0hanah0me"
 
 serial_port = None
 
@@ -33,9 +35,34 @@ def set_device_timeout(timeout):
 def wait_for_device_idle():
     global serial_port
 
+    set_device_timeout(15)
     response = serial_port.read(1024)
     while len(response) > 0:
         response = serial_port.read(1024)
+
+    print("Device response: {}".format(response))
+
+    # Board is now idle. Check if login is required
+    serial_port.write("\n".encode("utf-8"))
+    response = serial_port.read(1024).decode("utf-8")
+    print("Device response: {}".format(response))
+
+    if "password" in response.lower():
+        serial_port.write("\n".encode("utf-8"))
+        response = serial_port.read(1024).decode("utf-8")
+        print("Device response: {}".format(response))
+
+    if "login" in response:
+        serial_port.write("{}\n".format(USER).encode("utf-8"))
+        response = serial_port.read(1024).decode("utf-8")
+        print("Device response: {}".format(response))
+
+        if "password" in response.lower():
+            serial_port.write("{}\n".format(PASS).encode("utf-8"))
+
+    set_device_timeout(1)
+    response = serial_port.read(1024).decode("utf-8")
+    print("Device response: {}".format(response))
 
 
 def set_device_ip(dev_port, target_ip):
@@ -57,9 +84,7 @@ def query_device():
 
 def get_dev_ip(dev_port):
     open_device(dev_port)
-    set_device_timeout(5)
     wait_for_device_idle()
-    set_device_timeout(1)
     response = query_device()
     close_device()
 
@@ -103,4 +128,8 @@ while True:
     devices = list_uart_devices()
 
     for device_port in initial_devices.keys():
-        dev_ip = devices.get(device_port, None)
+        current_dev_ip = devices.get(device_port, None)
+        initial_dev_ip = initial_devices.get(device_port)
+
+        if current_dev_ip is not None and current_dev_ip != initial_dev_ip:
+            set_device_ip(device_port, initial_dev_ip)
