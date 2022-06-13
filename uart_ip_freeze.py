@@ -10,7 +10,7 @@ IP_START = "192.168."
 INTERFACE = "wlan0"
 USER = "root"
 PASS = "0hanah0me"
-
+MAX_MSG_LEN = 2048
 serial_port = None
 
 
@@ -35,32 +35,45 @@ def set_device_timeout(timeout):
 def wait_for_device_idle():
     global serial_port
 
-    set_device_timeout(15)
-    response = serial_port.read(1024)
-    while len(response) > 0:
-        response = serial_port.read(1024)
-
-    print("Device response: {}".format(response))
-
-    # Board is now idle. Check if login is required
-    serial_port.write("\n".encode("utf-8"))
+    set_device_timeout(3)
+    dev_msg = ""
     response = serial_port.read(1024).decode("utf-8")
-    print("Device response: {}".format(response))
+    dev_msg += response
+    while len(response) > 0:
+        response = serial_port.read(1024).decode("utf-8")
+        dev_msg += response
 
-    if "password" in response.lower():
+    if len(dev_msg) < len("password:"):
+        # message received is too short to determine current state. Provoke the device to say more.
         serial_port.write("\n".encode("utf-8"))
         response = serial_port.read(1024).decode("utf-8")
-        print("Device response: {}".format(response))
+        dev_msg += response
 
-    if "login" in response:
+    print("Device response 1: {}".format(dev_msg))
+
+    # Board is now idle. We only need the last message row.
+    dev_msg = dev_msg.split('\n')[-1]
+
+    # Check if login is required.
+    if "password:" in dev_msg.lower():
+        # Password required, but we did not send correct login, so skip this.
+        set_device_timeout(7)
+        serial_port.write("\n".encode("utf-8"))
+        dev_msg = serial_port.read(1024).decode("utf-8")
+        print("Device response 2: {}".format(dev_msg))
+
+    set_device_timeout(3)
+    if "login:" in dev_msg:
+        print('Sending login')
         serial_port.write("{}\n".format(USER).encode("utf-8"))
-        response = serial_port.read(1024).decode("utf-8")
-        print("Device response: {}".format(response))
+        dev_msg = serial_port.read(1024).decode("utf-8")
+        print("Device response login: {}".format(dev_msg))
 
-        if "password" in response.lower():
+        if "password:" in dev_msg.lower():
+            print('Sending pass')
+            set_device_timeout(7)
             serial_port.write("{}\n".format(PASS).encode("utf-8"))
 
-    set_device_timeout(1)
     response = serial_port.read(1024).decode("utf-8")
     print("Device response: {}".format(response))
 
@@ -74,7 +87,7 @@ def set_device_ip(dev_port, target_ip):
     serial_port.close()
 
 
-def query_device():
+def query_device_ip():
     global serial_port
 
     serial_port.write(QUERY.encode("utf-8"))
@@ -85,7 +98,7 @@ def query_device():
 def get_dev_ip(dev_port):
     open_device(dev_port)
     wait_for_device_idle()
-    response = query_device()
+    response = query_device_ip()
     close_device()
 
     interface = ""
